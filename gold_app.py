@@ -12,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. Custom CSS: แต่งหน้าตาให้เหมือนแอปมือถือ (สำคัญมาก) ---
+# --- 2. Custom CSS: แต่งหน้าตาให้เหมือนแอปมือถือ ---
 st.markdown("""
     <style>
         /* นำเข้าฟอนต์ Prompt */
@@ -112,7 +112,9 @@ if 'last_update' not in st.session_state:
 def get_gold_data():
     try:
         tickers = yf.Tickers("GC=F THB=X")
-        gold_hist = tickers.tickers['GC=F'].history(period="60d")
+        
+        # ดึงย้อนหลัง 6 เดือน (6mo) เพื่อนำมาพลอตกราฟให้สวยงาม
+        gold_hist = tickers.tickers['GC=F'].history(period="6mo")
         thb_hist = tickers.tickers['THB=X'].history(period="5d")
 
         if gold_hist.empty or thb_hist.empty: return None
@@ -120,7 +122,8 @@ def get_gold_data():
         return {
             'spot': gold_hist['Close'].iloc[-1],
             'thb': thb_hist['Close'].iloc[-1],
-            'rsi': gold_hist.ta.rsi(length=14).iloc[-1]
+            'rsi': gold_hist.ta.rsi(length=14).iloc[-1],
+            'history': gold_hist['Close'] # ส่งข้อมูลกราฟออกไปด้วย
         }
     except:
         return None
@@ -144,7 +147,7 @@ if st.button("🔄 อัปเดตราคาล่าสุด"):
             st.session_state['market_data'] = data
             st.session_state['last_update'] = datetime.now().strftime('%H:%M:%S')
 
-# --- ส่วนปรับจูนราคา (ย้ายมาไว้หน้าหลัก) ---
+# --- ส่วนปรับจูนราคา ---
 with st.expander("⚙️ ปรับจูนราคา / ตั้งค่า Premium"):
     st.write("ปรับค่าเพื่อให้ตรงกับหน้าร้าน")
     premium = st.slider("บวกค่า Premium (บาท)", 0, 500, 150, 10)
@@ -158,7 +161,7 @@ if st.session_state['market_data']:
     raw_thai = (d['spot'] * d['thb'] * 0.965 * 15.244) / 31.1035
     final_thai = round((raw_thai + premium) / 50) * 50
 
-    # 1. การ์ดราคาทองคำ (พระเอกของงาน)
+    # 1. การ์ดราคาทองคำ
     st.markdown(f"""
         <div class="gold-card">
             <div style="color: #FFD700; font-size: 1rem; margin-bottom: 10px;">ทองคำแท่ง 96.5%</div>
@@ -184,21 +187,23 @@ if st.session_state['market_data']:
             </div>
         """, unsafe_allow_html=True)
 
-    # 3. ส่วนวิเคราะห์ RSI
+    # 3. ส่วนวิเคราะห์ RSI (ปรับปรุง Logic ตามสั่ง)
     rsi_val = d['rsi']
     
-    # กำหนดสีและคำแนะนำ
+    # Logic คำแนะนำ
     if rsi_val <= 30:
-        rsi_color = "#00E676" # เขียวสว่าง
-        msg = "✅ ราคาถูกมาก (Oversold)"
+        rsi_color = "#00E676" # เขียวสด
+        msg = "✅ ราคาถูกมาก! รีบเข้าซื้อ (Strong Buy)"
+    elif rsi_val <= 45: # เพิ่มช่วงราคาถูก (แต่ยังไม่ Over)
+        rsi_color = "#64DD17" # เขียวอ่อน
+        msg = "🟢 ราคาถูก เพิ่มเข้าซื้อ (Accumulate)"
     elif rsi_val >= 70:
-        rsi_color = "#FF1744" # แดงสว่าง
-        msg = "🔥 ราคาแพงไป (Overbought)"
+        rsi_color = "#FF1744" # แดง
+        msg = "🔥 ราคาแพง! แจ้งเตือนระวังดอย (Warning)"
     else:
-        rsi_color = "#FFC400" # เหลืองทอง
-        msg = "⚖️ ราคากลางๆ (Neutral)"
+        rsi_color = "#FFC400" # เหลือง
+        msg = "⚖️ ราคากลางๆ ชะลอรอดูทิศทาง (Wait & See)"
 
-    # การ์ด RSI
     st.markdown(f"""
         <div class="custom-card" style="border-left: 5px solid {rsi_color};">
             <div style="display:flex; justify-content:space-between;">
@@ -210,10 +215,14 @@ if st.session_state['market_data']:
             </div>
         </div>
     """, unsafe_allow_html=True)
-    
-    # Progress Bar
     st.progress(int(rsi_val))
 
+    # 4. กราฟราคาทองคำ
+    st.markdown("---")
+    st.markdown("<div style='color:#D4AF37; margin-bottom:10px;'>📈 แนวโน้มราคา (6 เดือนล่าสุด)</div>", unsafe_allow_html=True)
+    
+    # วาดกราฟเส้น (Line Chart) สีทอง
+    st.line_chart(d['history'], color="#D4AF37", use_container_width=True)
+
 else:
-    # หน้าจอเริ่มต้น
     st.info("👆 กดปุ่ม 'อัปเดตราคาล่าสุด' เพื่อเริ่มใช้งาน")
